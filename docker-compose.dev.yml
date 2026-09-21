@@ -1,0 +1,42 @@
+name: audio-speech-vault
+
+services:
+  app:
+    build:
+      context: .
+    environment:
+      APP_ENV: development
+      HTTP_ADDRESS: :8080
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env}
+      DATA_DIR: /app/data
+      LOG_LEVEL: info
+      SHUTDOWN_TIMEOUT: 10s
+    ports:
+      - "${HTTP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-audio_speech_vault}
+      POSTGRES_USER: ${POSTGRES_USER:-audio_vault}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

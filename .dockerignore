@@ -1,0 +1,10 @@
+.git
+.cache
+.env
+data
+reports
+metadata
+*.mp3
+*.sqlite
+*.sqlite3
+*.db
