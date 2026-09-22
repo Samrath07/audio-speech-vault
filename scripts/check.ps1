@@ -21,13 +21,34 @@ function Invoke-Step {
     }
 }
 
-Invoke-Step "go fmt" { go fmt ./... }
+Push-Location (Join-Path $repoRoot "backend")
+try {
+    Write-Host "==> go fmt"
+    $formattedFiles = go fmt ./...
+    if ($LASTEXITCODE -ne 0) { throw "go fmt failed with exit code $LASTEXITCODE" }
+    if ($formattedFiles) { throw "go fmt changed files: $formattedFiles" }
 
-$changedFiles = git diff --name-only -- "*.go"
-if ($changedFiles) {
-    Write-Error "go fmt changed files. Review and stage the formatted files before committing:`n$changedFiles"
+    Invoke-Step "go vet" { go vet ./... }
+    Invoke-Step "go test" { go test ./... }
+    Invoke-Step "go build" { go build ./... }
+}
+finally {
+    Pop-Location
 }
 
-Invoke-Step "go vet" { go vet ./... }
-Invoke-Step "go test" { go test ./... }
-Invoke-Step "go build" { go build ./... }
+$frontendPath = Join-Path $repoRoot "frontend"
+if (Get-Command npm -ErrorAction SilentlyContinue) {
+    Push-Location $frontendPath
+    try {
+        Invoke-Step "npm ci" { npm ci }
+        Invoke-Step "frontend check" { npm run check }
+    }
+    finally {
+        Pop-Location
+    }
+}
+else {
+    Invoke-Step "frontend check (Docker)" {
+        docker run --rm -v "${frontendPath}:/app" -w /app node:24-alpine sh -c "npm ci && npm run check"
+    }
+}

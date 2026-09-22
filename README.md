@@ -1,10 +1,18 @@
 # Audio Speech Vault
 
-Audio Speech Vault is currently a Day 1 Go foundation: an HTTP service, PostgreSQL connection, and schema migrations. Authentication, uploads, audio algorithms, and the dashboard are intentionally outside this first slice.
+Audio Speech Vault currently contains a Go API foundation, PostgreSQL migrations, and a React dashboard shell. Authentication, uploads, analysis, and research workflows are planned but not implemented yet.
+
+## Repository Layout
+
+- `backend/`: Go server, migrations, and backend Dockerfile
+- `frontend/`: React, TypeScript, and Vite application
+- `docker-compose.dev.yml`: local three-service stack
+- `scripts/check.ps1`: shared local and CI checks
 
 ## Required Software
 
 - Go 1.25 or newer
+- Node.js 24 or newer with npm for running the frontend outside Docker
 - Docker Desktop with Docker Compose
 - PowerShell 7 or newer for the shared local check script
 - Git
@@ -25,21 +33,24 @@ $env:DATABASE_URL = "<your local PostgreSQL connection URL>"
 
 ## Local Startup
 
-Start PostgreSQL and the Go service:
+Start PostgreSQL, the Go API, and the React development server:
 
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-The application runs at `http://localhost:8080`.
+Open the dashboard at `http://localhost:5173` (or `FRONTEND_PORT` from `.env`). The Go API listens at `http://localhost:8080` (or `HTTP_PORT` from `.env`). Vite proxies health requests to the API in Compose.
+
+For separate host development, run `npm ci` and `npm run dev` from `frontend/`. Set `API_PROXY_TARGET` to the host API URL if the API does not use port `8080`.
 
 ## Migrations
 
-The Docker Compose app service runs migrations automatically before starting the server.
+The Docker Compose app service runs migrations automatically before starting the server. For manual migrations, change to `backend/` first; the migration command reads `migrations/` relative to the current directory.
 
 To run migrations manually against the local PostgreSQL container:
 
 ```powershell
+Set-Location backend
 go run ./cmd/migrate up
 ```
 
@@ -57,25 +68,30 @@ go run ./cmd/migrate down
 
 ## Tests And Checks
 
-Run unit tests:
+Run backend unit tests:
 
 ```powershell
+Set-Location backend
 go test ./...
 ```
 
-Run the same check command used by CI:
+Run the frontend checks from `frontend/` with `npm ci` and `npm run check`.
+
+Run the same check command used by CI from the repository root. It uses Docker for frontend checks when npm is not installed locally:
 
 ```powershell
 ./scripts/check.ps1
 ```
 
-The check script runs:
+The check script runs Go formatting, vetting, tests, and build in `backend/`, then installs locked frontend dependencies and runs its TypeScript and Vite build checks.
 
 ```powershell
 go fmt ./...
 go vet ./...
 go test ./...
 go build ./...
+npm ci
+npm run check
 ```
 
 ## Health Checks
@@ -83,16 +99,16 @@ go build ./...
 Liveness:
 
 ```text
-http://localhost:8080/health/live
+http://localhost:5173/health/live
 ```
 
 Readiness:
 
 ```text
-http://localhost:8080/health/ready
+http://localhost:5173/health/ready
 ```
 
-`/health/live` returns `200` when the process can serve HTTP. `/health/ready` returns `200` only when PostgreSQL can be reached, and `503` when the database is unavailable.
+These URLs pass through the Vite development proxy. The same paths are available directly on the API port. `/health/live` returns `200` when the process can serve HTTP. `/health/ready` returns `200` only when PostgreSQL can be reached, and `503` when the database is unavailable.
 
 ## PostgreSQL Troubleshooting
 
@@ -106,13 +122,14 @@ http://localhost:8080/health/ready
 
 ```powershell
 docker compose -f docker-compose.dev.yml up --build
-go test ./...
+./scripts/check.ps1
 ```
 
 Then verify:
 
-- `http://localhost:8080/health/live` returns `200`.
-- `http://localhost:8080/health/ready` returns `200`.
+- The dashboard opens at `http://localhost:5173`.
+- `/health/live` returns `200` through the dashboard origin.
+- `/health/ready` returns `200` through the dashboard origin.
 - PostgreSQL migrations have completed.
 - Stopping PostgreSQL makes readiness return `503`.
 - Restarting PostgreSQL restores readiness.
