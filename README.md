@@ -1,6 +1,6 @@
 # Audio Speech Vault
 
-Audio Speech Vault currently contains a Go API foundation, PostgreSQL migrations, and a React dashboard shell. Authentication, uploads, analysis, and research workflows are planned but not implemented yet.
+Audio Speech Vault currently contains a Go API, PostgreSQL-backed authentication, and a React dashboard. Uploads, analysis, and research workflows are planned but not implemented yet.
 
 ## Repository Layout
 
@@ -39,7 +39,27 @@ Start PostgreSQL, the Go API, and the React development server:
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Open the dashboard at `http://localhost:5173` (or `FRONTEND_PORT` from `.env`). The Go API listens at `http://localhost:8080` (or `HTTP_PORT` from `.env`). Vite proxies health requests to the API in Compose.
+Open the dashboard at `http://localhost:5173` (or `FRONTEND_PORT` from `.env`). The Go API listens at `http://localhost:8080` (or `HTTP_PORT` from `.env`). Vite proxies `/health` and `/api` requests to the API in Compose.
+
+## First Superadmin
+
+After the containers are running, create the first superadmin from an interactive terminal:
+
+```powershell
+docker compose -f docker-compose.dev.yml exec app audio-speech-vault-bootstrap-superadmin
+```
+
+Enter the email, display name, and a unique password when prompted. The password is hidden while typing and must be 12 to 72 bytes. Bootstrap works only while the users table is empty. Sign in at the dashboard URL. The superadmin can then create accounts for `admin`, `researcher`, `reviewer`, or another `superadmin`, change their roles, reset passwords, and deactivate accounts. Every active role can sign in and see the Overview and Account views; only superadmins see Users.
+
+Sessions are stored in PostgreSQL. Changing a role, deactivating an account, or changing/resetting a password revokes that account's sessions. The last active superadmin cannot be demoted or deactivated. In UAT and production, the session cookie requires HTTPS; set `FRONTEND_ORIGIN` to the browser-facing origin when the dashboard and API use different internal hosts.
+
+## Access Requests
+
+Applicants use **Request institutional access** on the sign-in page and provide their institution, full name, institutional email, and requested role. Public email providers are rejected. The requested role is advisory: only a superadmin can assign the final role, and `superadmin` cannot be requested publicly.
+
+The application sends an email-verification link before showing a request to superadmins. After approval, it sends a single-use password-setup link that expires after 24 hours. The raw verification and setup tokens are never stored in PostgreSQL.
+
+Local development writes email previews to the ignored `data/mail-outbox/` directory. Open the newest `.eml` file to follow its link. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM` for real delivery. SMTP host and sender are required in UAT and production.
 
 For separate host development, run `npm ci` and `npm run dev` from `frontend/`. Set `API_PROXY_TARGET` to the host API URL if the API does not use port `8080`.
 
@@ -76,6 +96,8 @@ go test ./...
 ```
 
 Run the frontend checks from `frontend/` with `npm ci` and `npm run check`.
+
+Authentication and access-request integration tests use separate migrated databases so they can run safely in parallel. Set `TEST_DATABASE_URL` to a database ending in `_auth_test` and `TEST_ACCESS_DATABASE_URL` to one ending in `_access_test`. Tests are skipped when their corresponding variable is absent.
 
 Run the same check command used by CI from the repository root. It uses Docker for frontend checks when npm is not installed locally:
 
