@@ -56,6 +56,7 @@ export default function App() {
   }, [refresh])
 
   return (
+    <>
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="brand"><span className="brand-mark"><AudioLines size={25} strokeWidth={2.2} /></span><span>Audio Speech<br />Vault</span></div>
@@ -90,5 +91,6 @@ export default function App() {
         </div>
       </main>
     </div>
+    </>
   )
 }
