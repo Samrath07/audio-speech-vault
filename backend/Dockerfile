@@ -14,7 +14,8 @@ FROM alpine:3.22
 
 WORKDIR /app
 
-RUN addgroup -S app && adduser -S app -G app
+RUN apk add --no-cache ffmpeg && \
+    addgroup -S app && adduser -S app -G app
 
 COPY --from=build /out/server /usr/local/bin/audio-speech-vault-server
 COPY --from=build /out/migrate /usr/local/bin/audio-speech-vault-migrate

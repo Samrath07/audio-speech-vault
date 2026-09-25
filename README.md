@@ -1,6 +1,6 @@
 # Audio Speech Vault
 
-Audio Speech Vault currently contains a Go API, PostgreSQL-backed authentication, and a React dashboard. Uploads, analysis, and research workflows are planned but not implemented yet.
+Audio Speech Vault contains a Go API, PostgreSQL-backed authentication and RBAC, a React annotation workspace, and deterministic local audio-signal analysis. It supports institutional access approval, project-scoped teams and tiers, batch recording uploads, human-reviewed signal events, versioned analysis profiles, and audited exports without ASR or cloud AI.
 
 ## Repository Layout
 
@@ -60,6 +60,18 @@ Applicants use **Request institutional access** on the sign-in page and provide 
 The application sends an email-verification link before showing a request to superadmins. After approval, it sends a single-use password-setup link that expires after 24 hours. The raw verification and setup tokens are never stored in PostgreSQL.
 
 Local development writes email previews to the ignored `data/mail-outbox/` directory. Open the newest `.eml` file to follow its link. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM` for real delivery. SMTP host and sender are required in UAT and production.
+
+## Annotation Workspace
+
+Authenticated users can open **Projects** to work with project-scoped recordings and time-aligned annotation tiers. Superadmins and admins can create projects, define free-text, tag, comment, or controlled-vocabulary tiers, and register recording metadata. Researchers and reviewers only see projects and recordings assigned to them through the project membership and task APIs.
+
+The workspace stores uploaded audio under the ignored `data/audio/` directory using randomized server-side names. Project managers can assign researchers and reviewers, upload batches of supported audio, monitor or retry analysis jobs, and open an authenticated WaveSurfer timeline for playback, zooming, interval selection, tier annotation, submission, and review. Spectrograms are deliberately deferred.
+
+FFmpeg runs locally to produce loudness envelopes, deterministic pause ranges, adjacent acoustic repetition candidates, anonymous Speaker A/B candidates, rhythm vectors, review-priority scores, metadata sidecars, and reports. Project analysis thresholds are versioned; changing a profile queues a new immutable run while preserving earlier results. The project view exposes profile history and export audits.
+
+Production deployment requirements and unresolved infrastructure decisions are documented in [`docs/production-readiness.md`](docs/production-readiness.md).
+
+Guardrails include institution isolation, role-compatible assignments, maximum file metadata limits, recording-duration bounds, controlled-vocabulary validation, required tiers, optimistic annotation versions, immutable submitted work, and constrained review state transitions.
 
 For separate host development, run `npm ci` and `npm run dev` from `frontend/`. Set `API_PROXY_TARGET` to the host API URL if the API does not use port `8080`.
 

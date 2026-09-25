@@ -6,7 +6,7 @@ import type { Role, Session } from './api'
 beforeEach(() => {
   vi.stubGlobal('fetch', vi.fn(async (input: string) => ({
     ok: true,
-    json: async () => input === '/api/users' ? { users: [] } : { status: 'ok' },
+    json: async () => input === '/api/users' ? { users: [] } : input === '/api/projects' ? [] : { status: 'ok' },
   })))
 })
 
@@ -26,8 +26,10 @@ describe('role dashboard', () => {
   for (const role of ['superadmin', 'admin', 'researcher', 'reviewer'] as Role[]) {
     it(`shows the overview and account to ${role}`, () => {
       render(<Dashboard session={sessionFor(role)} onLogout={() => {}} />)
-      expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Good to see you, Test' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Your work queue' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Account' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Projects' })).toBeInTheDocument()
       expect(screen.getByText(role)).toBeInTheDocument()
       if (role === 'superadmin') {
         expect(screen.getByRole('button', { name: 'Users' })).toBeInTheDocument()

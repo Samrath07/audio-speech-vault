@@ -67,6 +67,26 @@ func (h *Handler) RequireSuperadmin(w http.ResponseWriter, r *http.Request, muta
 	return current.user, true
 }
 
+func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request, mutation bool, roles ...Role) (User, bool) {
+	var current session
+	var ok bool
+	if mutation {
+		current, ok = h.authorizeMutation(w, r, false)
+	} else {
+		current, ok = h.requireSession(w, r)
+	}
+	if !ok {
+		return User{}, false
+	}
+	for _, role := range roles {
+		if current.user.Role == role {
+			return current.user, true
+		}
+	}
+	writeError(w, http.StatusForbidden, "Forbidden")
+	return User{}, false
+}
+
 func (h *Handler) ValidatePublicMutation(w http.ResponseWriter, r *http.Request) bool {
 	return validMutationRequest(w, r, h.allowedOrigin)
 }

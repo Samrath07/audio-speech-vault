@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/shivam3746/audio-speech-vault/internal/access"
+	"github.com/shivam3746/audio-speech-vault/internal/analysis"
 	"github.com/shivam3746/audio-speech-vault/internal/auth"
 	"github.com/shivam3746/audio-speech-vault/internal/config"
 	"github.com/shivam3746/audio-speech-vault/internal/health"
@@ -20,6 +21,7 @@ import (
 	"github.com/shivam3746/audio-speech-vault/internal/platform/httpserver"
 	"github.com/shivam3746/audio-speech-vault/internal/platform/logging"
 	platformmail "github.com/shivam3746/audio-speech-vault/internal/platform/mail"
+	"github.com/shivam3746/audio-speech-vault/internal/workspace"
 )
 
 const version = "dev"
@@ -58,6 +60,13 @@ func run() error {
 	}
 	defer pool.Close()
 	logger.Info("database connected")
+	shutdownSignal, stopSignals := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stopSignals()
+	go analysis.NewWorker(pool, cfg.DataDir, logger).Run(shutdownSignal)
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /health/live", health.Live())
@@ -76,6 +85,8 @@ func run() error {
 	}
 	accessHandler := access.NewHandler(access.NewService(pool, mailSender, cfg.FrontendOrigin), authHandler, logger)
 	accessHandler.Register(mux)
+	workspace.NewHandler(workspace.NewStore(pool), authHandler, logger, cfg.DataDir).Register(mux)
+	analysis.NewHandler(pool, authHandler, logger, cfg.DataDir).Register(mux)
 
 	handler := httpserver.RequestID(
 		httpserver.RequestLogger(logger)(
@@ -87,17 +98,10 @@ func run() error {
 		Addr:              cfg.HTTPAddress,
 		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
+		ReadTimeout:       2 * time.Minute,
+		WriteTimeout:      2 * time.Minute,
 		IdleTimeout:       60 * time.Second,
 	}
-
-	shutdownSignal, stopSignals := signal.NotifyContext(
-		context.Background(),
-		os.Interrupt,
-		syscall.SIGTERM,
-	)
-	defer stopSignals()
 
 	err = httpserver.ListenAndServe(
 		shutdownSignal,
