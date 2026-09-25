@@ -52,3 +52,11 @@ func TestLoadRequiresDatabaseURL(t *testing.T) {
 		t.Fatal("Load() expected an error without DATABASE_URL")
 	}
 }
+
+func TestLoadRejectsInvalidFrontendOrigin(t *testing.T) {
+	t.Setenv("DATABASE_URL", testDatabaseURL)
+	t.Setenv("FRONTEND_ORIGIN", "http://localhost:5173/path")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() expected an error for origin with a path")
+	}
+}

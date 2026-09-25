@@ -1,96 +1,36 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Activity, AudioLines, CircleCheck, CircleX, Database, FolderOpen, LayoutDashboard, LoaderCircle, RefreshCw } from 'lucide-react'
-
-type CheckState = 'checking' | 'healthy' | 'unavailable'
-
-type ServiceStatus = {
-  api: CheckState
-  database: CheckState
-  checkedAt: Date | null
-}
-
-const initialStatus: ServiceStatus = {
-  api: 'checking',
-  database: 'checking',
-  checkedAt: null,
-}
-
-async function checkEndpoint(path: string): Promise<CheckState> {
-  try {
-    const response = await fetch(path, { cache: 'no-store' })
-    return response.ok ? 'healthy' : 'unavailable'
-  } catch {
-    return 'unavailable'
-  }
-}
-
-function StatusIcon({ state }: { state: CheckState }) {
-  if (state === 'checking') return <LoaderCircle aria-hidden="true" className="spin" size={18} />
-  if (state === 'healthy') return <CircleCheck aria-hidden="true" size={18} />
-  return <CircleX aria-hidden="true" size={18} />
-}
-
-function StatusLabel({ state }: { state: CheckState }) {
-  const label = state === 'checking' ? 'Checking' : state === 'healthy' ? 'Operational' : 'Unavailable'
-  return <span className={`status status--${state}`}><StatusIcon state={state} />{label}</span>
-}
+import { useEffect, useState } from 'react'
+import { AudioLines, LoaderCircle } from 'lucide-react'
+import { api, ApiError, type Session } from './api'
+import Dashboard from './Dashboard'
+import Login from './Login'
+import RequestAccess from './RequestAccess'
+import { PasswordSetup, VerifyEmail } from './TokenAction'
 
 export default function App() {
-  const [status, setStatus] = useState<ServiceStatus>(initialStatus)
-  const [refreshing, setRefreshing] = useState(false)
-
-  const refresh = useCallback(async () => {
-    setRefreshing(true)
-    const [api, database] = await Promise.all([
-      checkEndpoint('/health/live'),
-      checkEndpoint('/health/ready'),
-    ])
-    setStatus({ api, database, checkedAt: new Date() })
-    setRefreshing(false)
-  }, [])
+  const [session, setSession] = useState<Session | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [requestingAccess, setRequestingAccess] = useState(false)
+  const [verificationToken, setVerificationToken] = useState(() => new URLSearchParams(window.location.search).get('verify'))
+  const [setupToken, setSetupToken] = useState(() => new URLSearchParams(window.location.search).get('setup'))
 
   useEffect(() => {
-    void refresh()
-    const interval = window.setInterval(() => void refresh(), 30_000)
-    return () => window.clearInterval(interval)
-  }, [refresh])
+    if (verificationToken || setupToken) window.history.replaceState({}, '', window.location.pathname)
+  }, [verificationToken, setupToken])
 
-  return (
-    <>
-    <div className="app-shell">
-      <aside className="sidebar" aria-label="Primary navigation">
-        <div className="brand"><span className="brand-mark"><AudioLines size={25} strokeWidth={2.2} /></span><span>Audio Speech<br />Vault</span></div>
-        <nav className="nav-list" aria-label="Workspace">
-          <a className="nav-item nav-item--active" href="/" aria-current="page"><LayoutDashboard size={19} />Overview</a>
-          <span className="nav-item nav-item--disabled" aria-disabled="true"><FolderOpen size={19} />Projects</span>
-          <span className="nav-item nav-item--disabled" aria-disabled="true"><AudioLines size={19} />Recordings</span>
-        </nav>
-        <div className="sidebar-footer"><span className="sidebar-footer-dot" />Development workspace</div>
-      </aside>
+  useEffect(() => {
+    api<Session>('/api/auth/me')
+      .then(setSession)
+      .catch((cause: unknown) => {
+        if (!(cause instanceof ApiError && cause.status === 401)) setError('Unable to reach the server.')
+      })
+      .finally(() => setLoading(false))
+  }, [])
 
-      <main className="main-content">
-        <header className="topbar"><span>Workspace</span><span className="topbar-env">Development</span></header>
-        <div className="content-inner">
-          <div className="page-heading">
-            <div><p className="eyebrow">Audio Speech Vault</p><h1>Overview</h1><p className="page-subtitle">Service and database status</p></div>
-            <button className="refresh-button" type="button" onClick={() => void refresh()} disabled={refreshing} title="Refresh status" aria-label="Refresh status"><RefreshCw className={refreshing ? 'spin' : ''} size={18} /></button>
-          </div>
-
-          <section className="section" aria-labelledby="system-heading">
-            <div className="section-heading"><h2 id="system-heading">System status</h2><span>{status.checkedAt ? `Checked ${status.checkedAt.toLocaleTimeString()}` : 'Checking services'}</span></div>
-            <div className="status-grid">
-              <div className="status-card"><div className="status-card-icon"><Activity size={21} /></div><div><h3>Application server</h3><p>HTTP service</p></div><StatusLabel state={status.api} /></div>
-              <div className="status-card"><div className="status-card-icon"><Database size={21} /></div><div><h3>PostgreSQL</h3><p>Database connection</p></div><StatusLabel state={status.database} /></div>
-            </div>
-          </section>
-
-          <section className="section" aria-labelledby="projects-heading">
-            <div className="section-heading"><h2 id="projects-heading">Projects</h2></div>
-            <div className="empty-state"><div className="empty-icon"><FolderOpen size={24} /></div><h3>No projects yet</h3></div>
-          </section>
-        </div>
-      </main>
-    </div>
-    </>
-  )
+  if (loading) return <div className="auth-loading"><AudioLines size={32} /><LoaderCircle className="spin" size={22} /><span>Loading workspace</span></div>
+  if (verificationToken) return <VerifyEmail token={verificationToken} onDone={() => setVerificationToken(null)} />
+  if (setupToken) return <PasswordSetup token={setupToken} onDone={() => setSetupToken(null)} />
+  if (!session && requestingAccess) return <RequestAccess onBack={() => setRequestingAccess(false)} />
+  if (!session) return <Login onLogin={setSession} serverError={error} onRequestAccess={() => setRequestingAccess(true)} />
+  return <Dashboard session={session} onLogout={() => setSession(null)} />
 }

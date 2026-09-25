@@ -49,6 +49,6 @@ if (Get-Command npm -ErrorAction SilentlyContinue) {
 }
 else {
     Invoke-Step "frontend check (Docker)" {
-        docker run --rm -v "${frontendPath}:/app" -w /app node:24-alpine sh -c "npm ci && npm run check"
+        docker run --rm -v "${frontendPath}:/app" -v "/app/node_modules" -w /app node:24-alpine sh -c "npm ci && npm run check"
     }
 }
