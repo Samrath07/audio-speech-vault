@@ -38,7 +38,7 @@ func TestAccessRequestLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	clean := func() {
-		_, err := db.Exec(context.Background(), `TRUNCATE password_setup_tokens,access_requests,sessions,audit_events,project_members,projects,users,institutions CASCADE`)
+		_, err := db.Exec(context.Background(), `TRUNCATE password_recovery_tokens,password_setup_tokens,access_requests,sessions,audit_events,project_members,projects,users,institutions CASCADE`)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,6 +90,40 @@ func TestAccessRequestLifecycle(t *testing.T) {
 	}
 	if role != auth.Reviewer || mustChange || institutionDomain != "example.edu" || bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte("new-password-12345")) != nil {
 		t.Fatalf("approved account was not finalized correctly")
+	}
+	messageCount := len(sender.messages)
+	if err := service.RequestPasswordRecovery(context.Background(), "missing@example.edu"); err != nil {
+		t.Fatal(err)
+	}
+	if len(sender.messages) != messageCount {
+		t.Fatal("unknown account must not receive recovery mail")
+	}
+	if err := service.RequestPasswordRecovery(context.Background(), "person@example.edu"); err != nil {
+		t.Fatal(err)
+	}
+	recoveryToken := tokenFromMessage(t, sender.last().Body, "?reset=")
+	var recoveredUserID string
+	if err := db.QueryRow(context.Background(), `SELECT id FROM users WHERE email='person@example.edu'`).Scan(&recoveredUserID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(context.Background(), `INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES($1,$2,'csrf',NOW()+INTERVAL '1 hour')`, []byte("recovery-session"), recoveredUserID); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CompletePasswordRecovery(context.Background(), recoveryToken, "recovered-password-123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.CompletePasswordRecovery(context.Background(), recoveryToken, "another-password-123"); !errors.Is(err, ErrInvalidToken) {
+		t.Fatalf("recovery token reuse should fail: %v", err)
+	}
+	var sessionCount int
+	if err := db.QueryRow(context.Background(), `SELECT COUNT(*) FROM sessions WHERE user_id=$1`, recoveredUserID).Scan(&sessionCount); err != nil || sessionCount != 0 {
+		t.Fatalf("password recovery must revoke sessions: count=%d err=%v", sessionCount, err)
+	}
+	if err := db.QueryRow(context.Background(), `SELECT password_hash FROM users WHERE id=$1`, recoveredUserID).Scan(&passwordHash); err != nil {
+		t.Fatal(err)
+	}
+	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte("recovered-password-123")) != nil {
+		t.Fatal("recovered password was not stored correctly")
 	}
 	if err := service.Create(context.Background(), "Other University", "Rejected User", "rejected@other.edu", auth.Admin); err != nil {
 		t.Fatal(err)

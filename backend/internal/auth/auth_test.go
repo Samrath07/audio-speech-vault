@@ -59,6 +59,14 @@ func TestProxiedFrontendOrigin(t *testing.T) {
 	if !validMutationRequest(httptest.NewRecorder(), request, "http://localhost:5173") {
 		t.Fatal("configured dashboard origin should be accepted")
 	}
+	request.Header.Set("Origin", "http://127.0.0.1:5173")
+	if !validMutationRequest(httptest.NewRecorder(), request, "http://localhost:5173") {
+		t.Fatal("equivalent loopback dashboard origin should be accepted")
+	}
+	request.Header.Set("Origin", "http://127.0.0.1:5174")
+	if validMutationRequest(httptest.NewRecorder(), request, "http://localhost:5173") {
+		t.Fatal("loopback origin on an unconfigured port should be rejected")
+	}
 	request.Header.Set("Origin", "http://attacker.example")
 	if validMutationRequest(httptest.NewRecorder(), request, "http://localhost:5173") {
 		t.Fatal("untrusted origin should be rejected")

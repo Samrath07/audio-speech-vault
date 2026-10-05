@@ -61,11 +61,15 @@ The application sends an email-verification link before showing a request to sup
 
 Local development writes email previews to the ignored `data/mail-outbox/` directory. Open the newest `.eml` file to follow its link. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, and `SMTP_FROM` for real delivery. SMTP host and sender are required in UAT and production.
 
+Use **Forgot password?** on the sign-in screen to request recovery. For privacy, the response is identical whether or not the account exists. Active accounts receive a single-use link that expires after one hour; completing recovery revokes all existing sessions. In local development, retrieve that link from the newest message in `data/mail-outbox/`.
+
 ## Annotation Workspace
 
 Authenticated users can open **Projects** to work with project-scoped recordings and time-aligned annotation tiers. Superadmins and admins can create projects, define free-text, tag, comment, or controlled-vocabulary tiers, and register recording metadata. Researchers and reviewers only see projects and recordings assigned to them through the project membership and task APIs.
 
-The workspace stores uploaded audio under the ignored `data/audio/` directory using randomized server-side names. Project managers can assign researchers and reviewers, upload batches of supported audio, monitor or retry analysis jobs, and open an authenticated WaveSurfer timeline for playback, zooming, interval selection, tier annotation, submission, and review. Spectrograms are deliberately deferred.
+The workspace stores uploaded audio under the ignored `data/audio/` directory using randomized server-side names. Project managers can assign researchers and reviewers, upload batches of supported audio, monitor or retry analysis jobs, and open an authenticated WaveSurfer timeline for playback, zooming, interval selection, tier annotation, verbatim transcription, submission, and review. Spectrograms are deliberately deferred.
+
+The verbatim workspace stores speaker-labelled, time-aligned transcript segments separately from general research annotations. Researchers must confirm how the target speaker was identified and mark at least one target-speaker segment before submission. Standard controls insert `[?]`, `[unintelligible]`, `[overlap]`, and `[noise]` without normalizing fillers, repetitions, false starts, or incomplete words. Segment edits use optimistic versions and every create, update, and deletion is retained in the transcript revision history. This phase is manual-only: no recording is sent to an ASR service or other external AI system.
 
 FFmpeg runs locally to produce loudness envelopes, deterministic pause ranges, adjacent acoustic repetition candidates, anonymous Speaker A/B candidates, rhythm vectors, review-priority scores, metadata sidecars, and reports. Project analysis thresholds are versioned; changing a profile queues a new immutable run while preserving earlier results. The project view exposes profile history and export audits.
 

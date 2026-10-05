@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ChevronLeft, ChevronRight, CircleAlert, Clock3, Downl
 import WaveSurfer from 'wavesurfer.js'
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.esm.js'
 import { api, ApiError, type Role, type Session } from './api'
+import TranscriptPanel from './TranscriptPanel'
 import './workspace.css'
 import './editor.css'
 
@@ -222,6 +223,7 @@ function AnnotationEditor({ recordingId, session, onBack }: { recordingId: strin
     </header>
     {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="success-message">{message}</p>}
     <Waveform recordingId={recordingId} durationMs={space.recording.durationMs} disabled={!space.canEdit} jumpTo={jumpTo} onSelect={(start, end) => { setStartMs(start); setEndMs(end); markChanged() }} />
+    <TranscriptPanel recordingId={recordingId} session={session} startMs={startMs} endMs={endMs} durationMs={space.recording.durationMs} onJump={(start, end) => setJumpTo({ startMs: start, endMs: end, nonce: Date.now() })} />
     <section className="signal-review" aria-labelledby="signal-events-heading">
       <div className="signal-review-heading"><div><span>Local deterministic analysis</span><h2 id="signal-events-heading">Signal events</h2></div><div className="signal-filters"><select aria-label="Filter event type" value={eventType} onChange={event => setEventType(event.target.value)}><option value="">All event types</option><option value="pause">Pause</option><option value="long_pause">Long pause</option><option value="repetition_candidate">Repetition candidate</option><option value="speaker_turn">Speaker turn</option><option value="speaker_a">Speaker A</option><option value="speaker_b">Speaker B</option></select><select aria-label="Filter review state" value={eventReview} onChange={event => setEventReview(event.target.value)}><option value="">All review states</option><option value="unreviewed">Unreviewed</option><option value="confirmed">Confirmed</option><option value="rejected">Rejected</option><option value="uncertain">Uncertain</option></select></div></div>
       {analysis?.status === 'failed' && <div className="signal-empty signal-empty--error"><CircleAlert size={18} />Analysis failed. An administrator can retry this recording.</div>}

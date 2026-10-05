@@ -1,0 +1,15 @@
+.password-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+
+.password-label label {
+  margin: 0;
+}
+
+.password-label .text-button {
+  font-size: 12px;
+}

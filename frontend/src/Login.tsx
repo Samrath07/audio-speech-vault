@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { AudioLines, ArrowRight, LockKeyhole } from 'lucide-react'
 import { api, type Session } from './api'
 
-export default function Login({ onLogin, serverError, onRequestAccess }: { onLogin: (session: Session) => void; serverError: string; onRequestAccess: () => void }) {
+export default function Login({ onLogin, serverError, onRequestAccess, onForgotPassword }: { onLogin: (session: Session) => void; serverError: string; onRequestAccess: () => void; onForgotPassword: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState(serverError)
@@ -34,7 +34,7 @@ export default function Login({ onLogin, serverError, onRequestAccess }: { onLog
         <p>Access your research workspace.</p>
         <label htmlFor="email">Email address</label>
         <input id="email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} required />
-        <label htmlFor="password">Password</label>
+        <div className="password-label"><label htmlFor="password">Password</label><button className="text-button" type="button" onClick={onForgotPassword}>Forgot password?</button></div>
         <input id="password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required />
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary-button login-submit" type="submit" disabled={submitting}>Sign in <ArrowRight size={17} /></button>

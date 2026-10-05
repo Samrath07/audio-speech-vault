@@ -568,6 +568,15 @@ func (s *Store) Submit(ctx context.Context, user auth.User, recordingID string) 
 			return fmt.Errorf("%w: required tier %q has no annotations", ErrInvalid, tier.Name)
 		}
 	}
+	transcript, err := s.GetTranscript(ctx, user, recordingID)
+	if err != nil {
+		return err
+	}
+	for _, finding := range transcript.Findings {
+		if finding.Severity == "error" {
+			return fmt.Errorf("%w: transcript incomplete: %s", ErrInvalid, finding.Message)
+		}
+	}
 	allowedStatuses := []string{"in_progress", "changes_requested"}
 	if canManage(user.Role) {
 		allowedStatuses = append(allowedStatuses, "unassigned")

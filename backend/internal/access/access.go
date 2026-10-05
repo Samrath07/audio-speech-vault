@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/mail"
@@ -20,6 +21,8 @@ import (
 )
 
 const tokenLifetime = 24 * time.Hour
+
+const recoveryTokenLifetime = time.Hour
 
 var (
 	ErrNotFound      = errors.New("access request not found")
@@ -282,6 +285,93 @@ func (s *Service) CompleteSetup(ctx context.Context, token, password string) err
 	return tx.Commit(ctx)
 }
 
+func (s *Service) RequestPasswordRecovery(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
+	parsed, err := mail.ParseAddress(email)
+	if err != nil || parsed.Address != email {
+		return nil
+	}
+	var userID string
+	err = s.db.QueryRow(ctx, `SELECT id FROM users
+		WHERE LOWER(email)=$1 AND is_active AND NOT must_change_password`, email).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	token, hash, err := newToken()
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `DELETE FROM password_recovery_tokens WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO password_recovery_tokens(token_hash,user_id,expires_at)
+		VALUES($1,$2,$3)`, hash, userID, time.Now().Add(recoveryTokenLifetime)); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	resetURL := s.frontendOrigin + "/?reset=" + token
+	if err := s.mail.Send(platformmail.Message{
+		To: email, Subject: "Reset your Audio Speech Vault password",
+		Body: "Reset your password using this one-time link:\n\n" + resetURL + "\n\nThis link expires in 1 hour. If you did not request this, you can ignore this email.",
+	}); err != nil {
+		_, _ = s.db.Exec(ctx, `DELETE FROM password_recovery_tokens WHERE token_hash=$1`, hash)
+		return fmt.Errorf("send password recovery email: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) CompletePasswordRecovery(ctx context.Context, token, password string) error {
+	if len(password) < 12 || len(password) > 72 {
+		return errors.New("password must be 12 to 72 bytes")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var userID string
+	err = tx.QueryRow(ctx, `SELECT user_id FROM password_recovery_tokens
+		WHERE token_hash=$1 AND used_at IS NULL AND expires_at>NOW() FOR UPDATE`, tokenHash(token)).Scan(&userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrInvalidToken
+	}
+	if err != nil {
+		return err
+	}
+	command, err := tx.Exec(ctx, `UPDATE users SET password_hash=$1,must_change_password=FALSE,updated_at=NOW()
+		WHERE id=$2 AND is_active`, string(hash), userID)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() == 0 {
+		return ErrInvalidToken
+	}
+	if _, err := tx.Exec(ctx, `UPDATE password_recovery_tokens SET used_at=NOW() WHERE token_hash=$1`, tokenHash(token)); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM sessions WHERE user_id=$1`, userID); err != nil {
+		return err
+	}
+	if err := insertAudit(ctx, tx, userID, userID, "user.password_recovered", nil); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func normalizeInstitutionalEmail(value string) (string, string, error) {
 	value = strings.ToLower(strings.TrimSpace(value))
 	parsed, err := mail.ParseAddress(value)
@@ -325,7 +415,14 @@ func uniqueViolation(err error) bool {
 }
 
 func insertAudit(ctx context.Context, tx pgx.Tx, actor, target, action string, metadata map[string]any) error {
-	_, err := tx.Exec(ctx, `INSERT INTO audit_events(actor_user_id,action,entity_type,entity_id,metadata)
-		VALUES($1,$2,'user',$3,$4)`, actor, action, target, metadata)
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("encode audit metadata: %w", err)
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO audit_events(actor_user_id,action,entity_type,entity_id,metadata)
+		VALUES($1,$2,'user',$3,$4::jsonb)`, actor, action, target, string(encoded))
 	return err
 }

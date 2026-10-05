@@ -30,6 +30,45 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/access-requests/{id}/reject", h.reject)
 	mux.HandleFunc("POST /api/access-requests/{id}/resend-setup", h.resendSetup)
 	mux.HandleFunc("POST /api/auth/complete-password-setup", h.completeSetup)
+	mux.HandleFunc("POST /api/auth/forgot-password", h.forgotPassword)
+	mux.HandleFunc("POST /api/auth/reset-password", h.completePasswordRecovery)
+}
+
+func (h *Handler) forgotPassword(w http.ResponseWriter, r *http.Request) {
+	if !h.auth.ValidatePublicMutation(w, r) {
+		return
+	}
+	var input struct {
+		Email string `json:"email"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	if err := h.service.RequestPasswordRecovery(r.Context(), input.Email); err != nil {
+		h.logger.Error("password recovery email failed", slog.Any("error", err))
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"message": "If an active account exists for that address, a password reset link has been sent"})
+}
+
+func (h *Handler) completePasswordRecovery(w http.ResponseWriter, r *http.Request) {
+	if !h.auth.ValidatePublicMutation(w, r) {
+		return
+	}
+	var input struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if !readJSON(w, r, &input) {
+		return
+	}
+	err := h.service.CompletePasswordRecovery(r.Context(), input.Token, input.Password)
+	if errors.Is(err, ErrInvalidToken) {
+		writeError(w, http.StatusBadRequest, "This password reset link is invalid or has expired")
+	} else if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+	} else {
+		writeJSON(w, http.StatusOK, map[string]string{"message": "Password reset. You can now sign in"})
+	}
 }
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {

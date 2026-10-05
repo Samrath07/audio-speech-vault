@@ -42,8 +42,85 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/recordings/{id}/annotations/{annotationId}", h.updateAnnotation)
 	mux.HandleFunc("DELETE /api/recordings/{id}/annotations/{annotationId}", h.deleteAnnotation)
 	mux.HandleFunc("POST /api/recordings/{id}/annotations/{annotationId}/restore", h.restoreAnnotation)
+	mux.HandleFunc("GET /api/recordings/{id}/transcript", h.getTranscript)
+	mux.HandleFunc("PUT /api/recordings/{id}/transcript/target-speaker", h.setTargetSpeaker)
+	mux.HandleFunc("POST /api/recordings/{id}/transcript/segments", h.createTranscriptSegment)
+	mux.HandleFunc("PATCH /api/recordings/{id}/transcript/segments/{segmentId}", h.updateTranscriptSegment)
+	mux.HandleFunc("DELETE /api/recordings/{id}/transcript/segments/{segmentId}", h.deleteTranscriptSegment)
 	mux.HandleFunc("POST /api/recordings/{id}/submit", h.submit)
 	mux.HandleFunc("POST /api/recordings/{id}/review", h.review)
+}
+
+func (h *Handler) getTranscript(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.user(w, r, false)
+	if !ok {
+		return
+	}
+	if !validID(r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, "Recording not found")
+		return
+	}
+	item, err := h.store.GetTranscript(r.Context(), user, r.PathValue("id"))
+	h.respond(w, item, err)
+}
+
+func (h *Handler) setTargetSpeaker(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.user(w, r, true)
+	if !ok {
+		return
+	}
+	var in struct {
+		Source string `json:"source"`
+	}
+	if !validID(r.PathValue("id")) || !readJSON(w, r, &in) {
+		return
+	}
+	item, err := h.store.SetTargetSpeaker(r.Context(), user, r.PathValue("id"), in.Source)
+	h.respond(w, item, err)
+}
+
+func (h *Handler) createTranscriptSegment(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.user(w, r, true)
+	if !ok {
+		return
+	}
+	var item TranscriptSegment
+	if !validID(r.PathValue("id")) || !readJSON(w, r, &item) {
+		return
+	}
+	item.RecordingID = r.PathValue("id")
+	created, err := h.store.SaveTranscriptSegment(r.Context(), user, item, true)
+	h.respondStatus(w, created, err, http.StatusCreated)
+}
+
+func (h *Handler) updateTranscriptSegment(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.user(w, r, true)
+	if !ok {
+		return
+	}
+	var item TranscriptSegment
+	if !validID(r.PathValue("id")) || !validID(r.PathValue("segmentId")) || !readJSON(w, r, &item) {
+		return
+	}
+	item.ID = r.PathValue("segmentId")
+	item.RecordingID = r.PathValue("id")
+	updated, err := h.store.SaveTranscriptSegment(r.Context(), user, item, false)
+	h.respond(w, updated, err)
+}
+
+func (h *Handler) deleteTranscriptSegment(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.user(w, r, true)
+	if !ok {
+		return
+	}
+	var in struct {
+		Version int `json:"version"`
+	}
+	if !validID(r.PathValue("id")) || !validID(r.PathValue("segmentId")) || !readJSON(w, r, &in) {
+		return
+	}
+	err := h.store.DeleteTranscriptSegment(r.Context(), user, r.PathValue("id"), r.PathValue("segmentId"), in.Version)
+	h.respond(w, map[string]string{"message": "Transcript segment deleted"}, err)
 }
 func (h *Handler) listPeople(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.auth.Authorize(w, r, false, auth.Superadmin, auth.Admin)

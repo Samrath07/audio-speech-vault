@@ -368,12 +368,27 @@ func validMutationRequest(w http.ResponseWriter, r *http.Request, allowedOrigin 
 	}
 	if origin := r.Header.Get("Origin"); origin != "" {
 		parsed, err := url.Parse(origin)
-		if err != nil || (origin != allowedOrigin && parsed.Host != r.Host) || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		if err != nil || (!equivalentAllowedOrigin(parsed, allowedOrigin) && parsed.Host != r.Host) || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 			writeError(w, http.StatusForbidden, "Invalid request origin")
 			return false
 		}
 	}
 	return true
+}
+
+func equivalentAllowedOrigin(origin *url.URL, allowedOrigin string) bool {
+	allowed, err := url.Parse(allowedOrigin)
+	if err != nil || origin.Scheme != allowed.Scheme || origin.Port() != allowed.Port() {
+		return false
+	}
+	if origin.Hostname() == allowed.Hostname() {
+		return true
+	}
+	return isLoopbackHost(origin.Hostname()) && isLoopbackHost(allowed.Hostname())
+}
+
+func isLoopbackHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 func readJSON(w http.ResponseWriter, r *http.Request, destination any) bool {
